@@ -1,0 +1,181 @@
+# Second version
+# Use less code
+# But single processor
+# Slow
+
+
+import os
+import sys
+import pandas as pd
+import decimal
+import datetime as dt
+from bitcoinrpc.authproxy import AuthServiceProxy
+
+import inspect
+from collections.abc import Mapping, Sequence
+import time
+
+# ----------------------------
+# Configuration
+# ----------------------------
+
+# Bitcoin Core RPC
+RPC_USER = os.environ.get("BTC_RPC_USER", "feiy_btc")
+RPC_PASSWORD = os.environ.get("BTC_RPC_PASSWORD", "v&xI1r&qa@=xi=lcroyl")
+RPC_HOST = os.environ.get("BTC_RPC_HOST", "127.0.0.1")
+RPC_PORT = int(os.environ.get("BTC_RPC_PORT", "8332"))
+
+START_BLOCK = 902000
+END_BLOCK = -1
+CONFIRMATIONS = 6
+TRUNK = 1000
+
+# Define where to save the CSV files
+DIR = '/data/index/btc/csv/latest'
+FOLDER_NAME = f"{START_BLOCK}-{END_BLOCK}"
+
+# ----------------------------
+# Helpers: connections
+# ----------------------------
+
+def get_rpc() -> AuthServiceProxy:
+    """Return RPC client for Bitcoin Core."""
+    uri = f"http://{RPC_USER}:{RPC_PASSWORD}@{RPC_HOST}:{RPC_PORT}"
+    return AuthServiceProxy(uri)
+
+
+def write_to_csv_pandas(file_path, data, header=None):
+    """Write rows to a CSV file using Pandas."""
+    if not data:
+        print(f"No data to write for {file_path}")
+        return  # Skip writing if there's no data
+    
+    df = pd.DataFrame(data)
+    
+    # If the header is provided, set the column names
+    if header:
+        df.columns = header
+    
+    # Write data to CSV (append mode, header only if the file doesn't exist)
+    df.to_csv(file_path, mode='a', header=not os.path.exists(file_path), index=False)
+
+def deep_getsizeof(obj, seen=None):
+    if seen is None:
+        seen = set()
+    oid = id(obj)
+    if oid in seen:
+        return 0
+    seen.add(oid)
+
+    size = sys.getsizeof(obj)
+
+    # dict
+    if isinstance(obj, Mapping):
+        size += sum(deep_getsizeof(k, seen) + deep_getsizeof(v, seen) for k, v in obj.items())
+    # list/tuple/set (but not strings/bytes)
+    elif isinstance(obj, (list, tuple, set, frozenset)):
+        size += sum(deep_getsizeof(i, seen) for i in obj)
+
+    return size
+
+
+# ----------------------------
+# Core Function
+# ----------------------------
+
+def extract_and_write_to_csv(rpc: AuthServiceProxy, start_height: int, end_height: int, chunk_path: str):
+
+
+    # block_hash I save as 32 byte "bin" form, you'll have to "hex" it to 64 byte text form for btc client usage. 
+    blocks_header = ['height', 'block_hash', 'time', 'tx_count']
+    tx_outputs_header = ['txid', 'vout', 'address', 'value_sats', 'created_height', 'created_time']
+
+    tx_outputs_data = []
+
+    for height in range(start_height, end_height + 1):
+
+        print(f"<{inspect.currentframe().f_code.co_name}> Processing block {height} of {end_height}")
+        block_hash_hex = rpc.getblockhash(height)
+        block_hash_bin = bytes.fromhex(block_hash_hex)
+        block = rpc.getblock(block_hash_hex, 2)  # verbosity=2 for full transactions
+
+        # Extract block-level data
+        # block_time = dt.datetime.fromtimestamp(block["time"], tz=dt.timezone.utc)
+        block_time = block["time"]
+        tx_count = len(block["tx"])
+
+        # Write block data to CSV (btc_blocks)
+        block_data = [(height, block_hash_bin, block_time, tx_count)]
+
+        write_to_csv_pandas(os.path.join(chunk_path,f"block_header.csv"), block_data, blocks_header)
+
+        for tx in block["tx"]:
+            txid = tx["txid"]
+            txid_bin = bytes.fromhex(txid)
+
+            # --------------------
+            # Outputs: create UTXO records
+            # --------------------
+            for vout in tx.get("vout", []):
+                n = vout["n"]
+                value_btc = decimal.Decimal(vout["value"])
+                value_sats = int(round(value_btc * decimal.Decimal('1e8')))  # Convert to satoshis
+
+                # Extract address if available
+                scriptpubkey = vout.get("scriptPubKey", {})
+                address = scriptpubkey.get("address") or None
+
+                # Prepare output data for CSV
+                tx_outputs_data.append([
+                    txid_bin, n, address, value_sats, height, block_time
+                ])
+        print("shallow bytes:", sys.getsizeof(tx_outputs_data)/1_000_000, 'Mb')
+
+
+    write_to_csv_pandas(os.path.join(chunk_path,f"tx_outputs.csv"), tx_outputs_data, header=tx_outputs_header)
+
+
+
+    print(f"<{inspect.currentframe().f_code.co_name}> Finished processing blocks from {start_height} to {end_height}")
+
+def main():
+
+    rpc = get_rpc()
+    end_block = END_BLOCK
+    if -1 == end_block:
+        end_block = rpc.getblockcount()
+        end_block = end_block - CONFIRMATIONS
+
+    print("endblock:",end_block)
+
+
+    print(f"<{inspect.currentframe().f_code.co_name}> Starting from block {START_BLOCK} to block {end_block}")
+
+    for i_block in range(START_BLOCK, end_block, TRUNK):
+        start_time = time.time()
+        chunk_start = i_block
+        chunk_end = min(i_block + TRUNK - 1, end_block)
+        chunk_path = f"{DIR}/{chunk_start}-{chunk_end}"
+        print(f"<{inspect.currentframe().f_code.co_name}> Currently processing from {chunk_start} to {chunk_end} blocks")
+
+        # Create folder for the trunk part
+        if not os.path.exists(f"{chunk_path}"):
+            # Create the folder
+            os.makedirs(f"{chunk_path}")
+            print(f"Folder '{f"{chunk_path}"}' created successfully.")
+        else:
+            print(f"Folder '{f"{chunk_path}"}' already exists.")
+
+
+        # Extract and write data to CSV using Pandas
+        extract_and_write_to_csv(rpc, chunk_start, chunk_end, chunk_path)
+        end_time = time.time()
+        time_diff = end_time - start_time
+        print(f"Time taken for block inserting: {time_diff} seconds")
+
+
+
+
+
+if __name__ == "__main__":
+    sys.exit(main())

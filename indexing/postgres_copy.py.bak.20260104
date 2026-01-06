@@ -1,0 +1,149 @@
+import os
+import psycopg2
+import time
+
+# ----------------------------
+# Configuration for PostgreSQL
+# ----------------------------
+
+PGHOST = os.environ.get("PGHOST", "127.0.0.1")
+PGDATABASE = os.environ.get("PGDATABASE", "btc_index")
+PGUSER = os.environ.get("PGUSER", "btcetl")  # Your PostgreSQL username
+PGPASSWORD = os.environ.get("PGPASSWORD", "strongpassword")
+
+# Directory where CSV files are located (must be accessible to the PostgreSQL server)
+BASE_DIR = '/data/index/btc/csv/'
+
+# ----------------------------
+# Postgres connection helper
+# ----------------------------
+
+def get_db():
+    """Return Postgres connection."""
+    dsn = (
+        f"dbname={PGDATABASE} user={PGUSER} "
+        f"password={PGPASSWORD} host={PGHOST}"
+    )
+    return psycopg2.connect(dsn)
+
+# ----------------------------
+# Perform PostgreSQL COPY for CSV data
+# ----------------------------
+
+def copy_to_postgres_from_csv(csv_file, table_name, column_names):
+    """Use PostgreSQL COPY to load CSV data into PostgreSQL."""
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            # Perform the COPY command for the filtered data
+            try:
+                cur.execute(f"""
+                    COPY {table_name} ({', '.join(column_names)})
+                    FROM '{csv_file}' DELIMITER ',' CSV HEADER;
+                """)
+                conn.commit()
+                print(f"Successfully copied data from {csv_file} to {table_name}.")
+            except psycopg2.errors.UniqueViolation:
+                print(f"Duplicate key violation, skipping duplicate rows in {csv_file}.")
+                conn.rollback()  # Rollback the transaction for the duplicate rows
+    except Exception as e:
+        print(f"Error copying data from {csv_file}: {e}")
+    finally:
+        conn.close()
+
+# ----------------------------
+# Update spent outputs in btc_tx_outputs
+# ----------------------------
+
+def update_spent_outputs(csv_file):
+    """Update spent outputs based on tx_inputs CSV data."""
+    conn = get_db()
+
+    with conn.cursor() as cur:
+        with open(csv_file, 'r') as f:
+            for line in f:
+                # Parse each line as it is read from CSV file (skip header)
+                # We assume the CSV has spent_height, spent_time, txid, vout columns
+                if line.startswith("spent_height"):
+                    continue  # Skip header
+
+                columns = line.strip().split(',')
+                spent_height = int(columns[0])
+                spent_time = columns[1]
+                txid = columns[2]
+                vout = int(columns[3])
+
+                # Update corresponding output as "spent"
+                cur.execute("""
+                    UPDATE btc_tx_outputs
+                    SET spent_height = %s,
+                        spent_time = %s
+                    WHERE txid = %s AND vout = %s;
+                """, (spent_height, spent_time, txid, vout))
+
+        conn.commit()
+
+    conn.close()
+    print(f"Updated spent outputs from {csv_file}.")
+
+# ----------------------------
+# Find folders and process CSV files in them
+# ----------------------------
+
+def find_and_process_csv_files(base_dir):
+    """Look for folders and process all CSV files in them."""
+    # List all directories in the base directory
+    for folder_name in os.listdir(base_dir):
+        folder_path = os.path.join(base_dir, folder_name)
+        
+        # Check if the path is a directory
+        if os.path.isdir(folder_path):
+            print(f"Processing folder: {folder_name}")
+
+            # Search for all CSV files in the folder
+            for csv_file in os.listdir(folder_path):
+                if csv_file.endswith(".csv"):
+                    csv_file_path = os.path.join(folder_path, csv_file)
+                    print(f"Found CSV file: {csv_file_path}")
+
+                    # Determine the table name and columns based on the CSV file name
+                    if 'blocks' in csv_file:
+                        table_name = 'btc_blocks'
+                        columns = ['height', 'block_hash', 'time', 'tx_count']
+                        # Perform COPY operation for blocks
+                        copy_to_postgres_from_csv(csv_file_path, table_name, columns)
+
+                    
+                    elif 'tx_outputs' in csv_file:
+                        start_time = time.time()
+
+                        table_name = 'btc_tx_outputs'
+                        columns = ['txid', 'vout', 'address', 'value_sats', 'created_height', 'created_time']
+                        # Perform COPY operation for tx_outputs
+                        copy_to_postgres_from_csv(csv_file_path, table_name, columns)
+
+                        end_time = time.time()
+                        execution_time = end_time - start_time
+                        print(f"It took : {execution_time} seconds to process a the copy operation")
+
+                    elif 'tx_inputs' in csv_file:
+                        # Update spent outputs for tx_inputs CSV (no separate table)
+                        
+
+                        # update_spent_outputs(csv_file_path)
+                        print ("Skipping tx_inputs")
+
+                    else:
+                        print(f"Skipping unrecognized file: {csv_file}")
+            
+
+# ----------------------------
+# Main function
+# ----------------------------
+
+def main():
+    # Process the folders and their CSV files
+    find_and_process_csv_files(BASE_DIR)
+
+if __name__ == "__main__":
+    main()

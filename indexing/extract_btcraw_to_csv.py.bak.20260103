@@ -1,0 +1,180 @@
+# Very first version,
+# including vin writing
+# but vin is useless and wates time to write in long-term metrics
+
+
+import os
+import sys
+import pandas as pd
+import decimal
+import datetime as dt
+from bitcoinrpc.authproxy import AuthServiceProxy
+
+# ----------------------------
+# Configuration
+# ----------------------------
+
+# Bitcoin Core RPC
+RPC_USER = os.environ.get("BTC_RPC_USER", "feiy_btc")
+RPC_PASSWORD = os.environ.get("BTC_RPC_PASSWORD", "v&xI1r&qa@=xi=lcroyl")
+RPC_HOST = os.environ.get("BTC_RPC_HOST", "127.0.0.1")
+RPC_PORT = int(os.environ.get("BTC_RPC_PORT", "8332"))
+
+START_BLOCK = 440000
+END_BLOCK = 445000
+
+# Define where to save the CSV files
+DIR = '/data/index/btc/csv'
+FOLDER_NAME = f"{START_BLOCK}-{END_BLOCK}"
+TX_OUTPUTS_CSV = f"{DIR}/{FOLDER_NAME}/tx_outputs_{START_BLOCK}-{END_BLOCK}.csv"
+TX_INPUTS_CSV = f"{DIR}/{FOLDER_NAME}/tx_inputs_{START_BLOCK}-{END_BLOCK}.csv"
+BLOCKS_CSV = f"{DIR}/{FOLDER_NAME}/blocks_{START_BLOCK}-{END_BLOCK}.csv"
+
+# ----------------------------
+# Helpers: connections
+# ----------------------------
+
+def get_rpc() -> AuthServiceProxy:
+    """Return RPC client for Bitcoin Core."""
+    uri = f"http://{RPC_USER}:{RPC_PASSWORD}@{RPC_HOST}:{RPC_PORT}"
+    return AuthServiceProxy(uri)
+
+def write_to_csv_pandas(file_path, data, header=None):
+    """Write rows to a CSV file using Pandas."""
+    if not data:
+        print(f"No data to write for {file_path}")
+        return  # Skip writing if there's no data
+    
+    df = pd.DataFrame(data)
+    
+    # If the header is provided, set the column names
+    if header:
+        df.columns = header
+    
+    # Write data to CSV (append mode, header only if the file doesn't exist)
+    df.to_csv(file_path, mode='a', header=not os.path.exists(file_path), index=False)
+
+def extract_and_write_to_csv(rpc: AuthServiceProxy, start_height: int, end_height: int):
+    """Extract Bitcoin blocks, transactions, inputs, and outputs, and write them to CSV using Pandas."""
+    
+    # Initialize CSV files with headers (only for first run)
+    tx_outputs_header = ['txid', 'vout', 'address', 'value_sats', 'created_height', 'created_time']
+    tx_inputs_header = ['spent_height', 'spent_time', 'txid', 'vout']
+    blocks_header = ['height', 'block_hash', 'time', 'tx_count']
+
+    # Variables to store current data
+    tx_outputs_data = []
+    tx_inputs_data = []
+    current_batch_start = start_height
+
+    # Loop through the specified range of blocks
+    for height in range(start_height, end_height + 1):
+        print(f"Processing block {height} of {end_height}")
+
+        # Get the block hash and block details
+        block_hash = rpc.getblockhash(height)
+        block = rpc.getblock(block_hash, 2)  # verbosity=2 for full transactions
+
+        # Extract block-level data
+        block_time = dt.datetime.fromtimestamp(block["time"], tz=dt.timezone.utc)
+        tx_count = len(block["tx"])
+
+        # Write block data to CSV (btc_blocks)
+        block_data = [(height, block_hash, block_time, tx_count)]
+        # write_to_csv_pandas(f"{DIR}/{start_height}-{end_height}/blocks.csv", block_data, blocks_header)
+        write_to_csv_pandas(BLOCKS_CSV, block_data, blocks_header)
+
+        # Process transactions in the block
+        for tx in block["tx"]:
+            txid = tx["txid"]
+
+            # --------------------
+            # Outputs: create UTXO records
+            # --------------------
+            for vout in tx.get("vout", []):
+                n = vout["n"]
+                value_btc = decimal.Decimal(vout["value"])
+                value_sats = int(round(value_btc * decimal.Decimal('1e8')))  # Convert to satoshis
+
+                # Extract address if available
+                scriptpubkey = vout.get("scriptPubKey", {})
+                addresses = scriptpubkey.get("addresses") or []
+                address = addresses[0] if addresses else None
+
+                # Prepare output data for CSV
+                tx_outputs_data.append([
+                    txid, n, address, value_sats, height, block_time
+                ])
+
+            # --------------------
+            # Inputs: mark spends
+            # --------------------
+            # for vin in tx.get("vin", []):
+            #     if "txid" not in vin:
+            #         continue
+
+            #     prev_txid = vin["txid"]
+            #     prev_vout = vin["vout"]
+
+            #     tx_inputs_data.append([
+            #         height, block_time, prev_txid, prev_vout
+            #     ])
+
+
+        # if height > 260000 and height%batch_size == 0:
+        #     write_to_csv_pandas(f"{DIR}/{height-batch_size}-{height}/tx_outputs.csv", tx_outputs_data, header=tx_outputs_header)
+
+        # write_to_csv_pandas(f"{DIR}/{start_height}-{end_height}/tx_outputs.csv", tx_outputs_data, header=tx_outputs_header)
+    
+        write_to_csv_pandas(TX_OUTPUTS_CSV, tx_outputs_data, header=tx_outputs_header)
+        # write_to_csv_pandas(TX_INPUTS_CSV, tx_inputs_data, header=tx_inputs_header)
+
+
+    print(f"Finished processing blocks from {start_height} to {end_height}")
+
+# ----------------------------
+# Main
+# ----------------------------
+
+def main():
+
+    rpc = get_rpc()
+
+    print(f"Starting from block {START_BLOCK} to block {END_BLOCK}")
+
+
+
+    if not os.path.exists(f"{DIR}/{FOLDER_NAME}"):
+        # Create the folder
+        os.makedirs(f"{DIR}/{FOLDER_NAME}")
+        print(f"Folder '{f"{DIR}/{FOLDER_NAME}"}' created successfully.")
+    else:
+        print(f"Folder '{f"{DIR}/{FOLDER_NAME}"}' already exists.")
+    
+    # Extract and write data to CSV using Pandas
+    extract_and_write_to_csv(rpc, START_BLOCK, END_BLOCK)
+
+    # checkpoint_block = START_BLOCK
+    # while checkpoint_block<END_BLOCK:
+
+    #     print(f"processing from {checkpoint_block} to {checkpoint_block+10000}")
+
+    #     folder_name = f"{checkpoint_block}-{checkpoint_block+10000}"
+    #     # Check if the folder already exists
+    #     if not os.path.exists(f"{DIR}/{folder_name}"):
+    #         # Create the folder
+    #         os.makedirs(f"{DIR}/{folder_name}")
+    #         print(f"Folder '{f"{DIR}/{folder_name}"}' created successfully.")
+    #     else:
+    #         print(f"Folder '{f"{DIR}/{folder_name}"}' already exists.")
+        
+    #     # Extract and write data to CSV using Pandas
+    #     rpc = get_rpc()
+    #     extract_and_write_to_csv(rpc, checkpoint_block, checkpoint_block+10000)
+
+    #     checkpoint_block += 10000
+
+
+
+if __name__ == "__main__":
+    sys.exit(main())
