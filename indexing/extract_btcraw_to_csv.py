@@ -32,14 +32,14 @@ RPC_PASSWORD = os.environ.get("BTC_RPC_PASSWORD", "v&xI1r&qa@=xi=lcroyl")
 RPC_HOST = os.environ.get("BTC_RPC_HOST", "127.0.0.1")
 RPC_PORT = int(os.environ.get("BTC_RPC_PORT", "8332"))
 
-START_BLOCK = 930000
-END_BLOCK = -1
+START_BLOCK = 600000
+END_BLOCK = 920000
 CONFIRMATIONS = 6
 TRUNK = 1000
 
 # Do not use more than 3 if RAM 16GB
 # Or decrease TRUNK to use more cores
-USING_CORE = 1
+USING_CORE = 3
 
 # Define where to save the CSV files
 DIR = '/data/index/btc/csv/From_800000/from_920000'
@@ -176,7 +176,7 @@ def write_to_csv_pandas(file_path, data, header=None, bytea_cols=None):
                     if isinstance(v, (bytes, bytearray, memoryview)) else v
                 )
 
-    df.to_csv(file_path, mode='a', header=not os.path.exists(file_path), index=False)
+    df.to_csv(file_path, mode='w', header=not os.path.exists(file_path), index=False)
 
 # ----------------------------
 # Core Function
@@ -223,12 +223,12 @@ def extract_and_write_to_csv(rpc: AuthServiceProxy, start_height: int, end_heigh
 
         # Write block data to CSV (btc_blocks)
         ##### temp commenting
-        block_data = [(height, block_hash_bin, block_time, tx_count)]
+        # block_data = [(height, block_hash_bin, block_time, tx_count)]
 
-        write_to_csv_pandas(os.path.join(chunk_path,f"block_header.pg.csv"), 
-                            block_data, 
-                            blocks_header,
-                            bytea_cols=["block_hash"],)
+        # write_to_csv_pandas(os.path.join(chunk_path,f"block_header.pg.csv"), 
+        #                     block_data, 
+        #                     blocks_header,
+        #                     bytea_cols=["block_hash"],)
         ##### temp commenting
 
         for tx in block["tx"]:
@@ -239,19 +239,19 @@ def extract_and_write_to_csv(rpc: AuthServiceProxy, start_height: int, end_heigh
             # Outputs: create UTXO records
             # --------------------
             ##### temp commenting
-            for vout in tx.get("vout", []):
-                n = vout["n"]
-                value_btc = decimal.Decimal(vout["value"])
-                value_sats = int(round(value_btc * decimal.Decimal('1e8')))  # Convert to satoshis
+            # for vout in tx.get("vout", []):
+            #     n = vout["n"]
+            #     value_btc = decimal.Decimal(vout["value"])
+            #     value_sats = int(round(value_btc * decimal.Decimal('1e8')))  # Convert to satoshis
 
-                # Extract address if available
-                scriptpubkey = vout.get("scriptPubKey", {})
-                address = scriptpubkey.get("address") or None
+            #     # Extract address if available
+            #     scriptpubkey = vout.get("scriptPubKey", {})
+            #     address = scriptpubkey.get("address") or None
 
-                # Prepare output data for CSV
-                tx_outputs_data.append([
-                    txid_bin, n, address, value_sats, height, block_time
-                ])
+            #     # Prepare output data for CSV
+            #     tx_outputs_data.append([
+            #         txid_bin, n, address, value_sats, height, block_time
+            #     ])
             ##### temp commenting
             # --------------------
             # Inputs (vin): create spend mapping records
@@ -275,10 +275,10 @@ def extract_and_write_to_csv(rpc: AuthServiceProxy, start_height: int, end_heigh
                 ])
 
     ##### temp commenting
-    write_to_csv_pandas(os.path.join(chunk_path,f"tx_outputs.pg.csv"), 
-                        tx_outputs_data, 
-                        header=tx_outputs_header,
-                        bytea_cols=["txid"])
+    # write_to_csv_pandas(os.path.join(chunk_path,f"tx_outputs.pg.csv"), 
+    #                     tx_outputs_data, 
+    #                     header=tx_outputs_header,
+    #                     bytea_cols=["txid"])
     ##### temp commenting
     
     write_to_csv_pandas(os.path.join(chunk_path, "tx_inputs.pg.csv"),

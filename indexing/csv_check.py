@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+CHECKING_PATH = 'From_800000/from_920000/920000-920999'
 
 CSV_BASE_PATH = '/data/index/btc/csv'
 CHECKING_PATH = 'From_800000/from_920000/920000-920999'

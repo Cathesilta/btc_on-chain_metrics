@@ -15,7 +15,7 @@ PGUSER = "btcetl"
 PGPASSWORD = "strongpassword"
 
 BASE_FOLDER = "/data/index/btc/csv/"
-CHOSEN_FOLDER = "From_800000/from_840000"
+CHOSEN_FOLDER = "From_800000/from_920000"
 OPERATION_FOLDER = os.path.join(BASE_FOLDER,CHOSEN_FOLDER)
 
 # Partition size (you said 20,000 blocks per partition)
@@ -67,11 +67,14 @@ def parse_range_dirname(name: str) -> tuple[int, int]:
     return int(a), int(b)
 
 
-def partition_table_for_height(h: int) -> str:
+def partition_tables_for_height(h: int) -> str:
     p_start = (h // PART_STEP) * PART_STEP
     # p_start = h
     p_end = p_start + PART_STEP - 1
-    return f"public.tx_outputs_p{p_start}_{p_end}", p_start, p_end
+    txo_table = f"public.tx_outputs_p{p_start}_{p_end}"
+    txi_table = f"public.tx_inputs_p{p_start}_{p_end}"
+    return txo_table, txi_table, p_start, p_end
+
 
 
 # =========================
@@ -95,38 +98,43 @@ def main():
             continue
         bh_csv = d / "block_header.pg.csv"
         txo_csv = d / "tx_outputs.pg.csv"
-        if bh_csv.exists() and txo_csv.exists():
-            jobs.append((d, start_h, end_h, bh_csv, txo_csv))
+        txi_csv = d / "tx_inputs.pg.csv"
+        if bh_csv.exists() and txo_csv.exists() and txi_csv.exists():
+            jobs.append((d, start_h, end_h, bh_csv, txo_csv, txi_csv))
 
     if not jobs:
         print(f"No valid data folders under: {root}", file=sys.stderr)
         sys.exit(1)
 
-    truncated_parts: set[str] = set()
+    truncated_parts_for_txo: set[str] = set()
+    truncated_parts_for_txi: set[str] = set()
     ok = 0
     failed = 0
 
     pbar = tqdm(jobs, unit="folder", desc="Importing")
-    for d, start_h, end_h, bh_csv, txo_csv in pbar:
-        part_table, part_start, part_end = partition_table_for_height(start_h)
+    for d, start_h, end_h, bh_csv, txo_csv, txi_csv in pbar:
+        txo_table, txi_table, part_start, part_end = partition_tables_for_height(start_h)
 
         # update tqdm line
-        pbar.set_postfix_str(f"{d.name} -> {part_table}")
+        pbar.set_postfix_str(f"{d.name} -> {txo_table}")
 
         try:
             # This move is to delete all rows and write in the sub table again,
             # if you want to update the sub table.
             # If you don't want to do so, set RELOAD_PARTITION_BEFORE_LOAD to False.
-            if RELOAD_PARTITION_BEFORE_LOAD and part_table not in truncated_parts:
-                run_psql(f"TRUNCATE TABLE {part_table};")
+            if RELOAD_PARTITION_BEFORE_LOAD and ((txo_table not in truncated_parts_for_txo) or (txo_table not in truncated_parts_for_txi)):
+                run_psql(f"TRUNCATE TABLE {txo_table};")
+                run_psql(f"TRUNCATE TABLE {txi_table};")
                 run_psql(
                     f"DELETE FROM {BLOCK_TABLE} "
                     f"WHERE height >= {part_start} AND height <= {part_end};"
                 )
-                truncated_parts.add(part_table)
+                truncated_parts_for_txo.add(txo_table)
+                truncated_parts_for_txi.add(txi_table)
 
             psql_copy(BLOCK_TABLE, bh_csv)
-            psql_copy(part_table, txo_csv)
+            psql_copy(txo_table, txo_csv)
+            psql_copy(txi_table, txi_csv)
 
             ok += 1
         except Exception as e:
