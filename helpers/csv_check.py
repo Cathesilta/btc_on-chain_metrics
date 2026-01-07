@@ -28,3 +28,18 @@ if __name__ == "__main__":
     print("tx_inputs columns:",list(df_inputs.columns))
     print(df_inputs.head().to_string(index=False))
     # print(df_outputs.head())
+
+
+
+
+
+
+
+
+    # Check for duplicates in 'block_hash' and 'height'
+    block_hash_duplicates = df_block[df_block.duplicated('block_hash')]
+    height_duplicates = df_block[df_block.duplicated('height')]
+
+    # Print duplicates if any
+    print("Duplicate block_hashes:\n", block_hash_duplicates)
+    print("Duplicate heights:\n", height_duplicates)
