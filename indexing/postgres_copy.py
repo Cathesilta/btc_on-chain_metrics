@@ -15,7 +15,7 @@ PGUSER = "btcetl"
 PGPASSWORD = "strongpassword"
 
 BASE_FOLDER = "/data/index/btc/csv/"
-CHOSEN_FOLDER = "From_800000/from_920000"
+CHOSEN_FOLDER = "from_920000"
 OPERATION_FOLDER = os.path.join(BASE_FOLDER,CHOSEN_FOLDER)
 
 # Partition size (you said 20,000 blocks per partition)
@@ -27,7 +27,7 @@ BLOCK_TABLE = "public.block_header"
 
 # If you re-run and want a clean reload: Set this parameter to True
 
-RELOAD_PARTITION_BEFORE_LOAD = True
+RELOAD_PARTITION_BEFORE_LOAD = False
 # =========================
 
 
@@ -116,13 +116,13 @@ def main():
         txo_table, txi_table, part_start, part_end = partition_tables_for_height(start_h)
 
         # update tqdm line
-        pbar.set_postfix_str(f"{d.name} -> {txo_table}")
+        pbar.set_postfix_str(f"{d.name}")
 
         try:
             # This move is to delete all rows and write in the sub table again,
             # if you want to update the sub table.
             # If you don't want to do so, set RELOAD_PARTITION_BEFORE_LOAD to False.
-            if RELOAD_PARTITION_BEFORE_LOAD and ((txo_table not in truncated_parts_for_txo) or (txo_table not in truncated_parts_for_txi)):
+            if RELOAD_PARTITION_BEFORE_LOAD and ((txo_table not in truncated_parts_for_txo) or (txi_table not in truncated_parts_for_txi)):
                 run_psql(f"TRUNCATE TABLE {txo_table};")
                 run_psql(f"TRUNCATE TABLE {txi_table};")
                 run_psql(
@@ -140,7 +140,15 @@ def main():
         except Exception as e:
             failed += 1
             tqdm.write(f"FAILED {d.name}: {e}")
-            # continue
+            continue
+
+
+        # print("d:",d)
+        # print("start_h:",start_h)
+        # print("end_h:",end_h)
+        # print("bh_csv:",bh_csv)
+        # print("txo_csv:",txo_csv)
+        # print("txi_csv:",txi_csv)
 
         pbar.set_postfix({"ok": ok, "failed": failed})
 
