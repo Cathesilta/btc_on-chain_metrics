@@ -45,8 +45,8 @@ class Config:
     password: str = os.getenv("PGPASSWORD", "strongpassword")
     schema: str = os.getenv("PGSCHEMA", "public")
 
-    start_height: int = int(os.getenv("START_HEIGHT", "700000"))
-    end_height: int = int(os.getenv("END_HEIGHT", "720000"))  # end-exclusive
+    start_height: int = int(os.getenv("START_HEIGHT", "780000"))
+    end_height: int = int(os.getenv("END_HEIGHT", "800000"))  # end-exclusive
     step: int = int(os.getenv("STEP", "20000"))
 
     dry_run: bool = os.getenv("DRY_RUN", "0") == "1"
