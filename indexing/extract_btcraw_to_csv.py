@@ -32,18 +32,17 @@ RPC_PASSWORD = os.environ.get("BTC_RPC_PASSWORD", "v&xI1r&qa@=xi=lcroyl")
 RPC_HOST = os.environ.get("BTC_RPC_HOST", "127.0.0.1")
 RPC_PORT = int(os.environ.get("BTC_RPC_PORT", "8332"))
 
-START_BLOCK = 931000
-END_BLOCK = -1
+START_BLOCK = 0
+END_BLOCK = 100000
 CONFIRMATIONS = 6
-TRUNK = 1000
+TRUNK = 20000
 
 # Do not use more than 3 if RAM 16GB
 # Or decrease TRUNK to use more cores
 USING_CORE = 2
 
 # Define where to save the CSV files
-DIR = '/data/index/btc/csv/from_920000'
-FOLDER_NAME = f"{START_BLOCK}-{END_BLOCK}"
+DIR = '/data/index/btc/csv/'
 
 # ----------------------------
 # Helpers: connections

@@ -45,8 +45,8 @@ class Config:
     password: str = os.getenv("PGPASSWORD", "strongpassword")
     schema: str = os.getenv("PGSCHEMA", "public")
 
-    start_height: int = int(os.getenv("START_HEIGHT", "780000"))
-    end_height: int = int(os.getenv("END_HEIGHT", "800000"))  # end-exclusive
+    start_height: int = int(os.getenv("START_HEIGHT", "0"))
+    end_height: int = int(os.getenv("END_HEIGHT", "100000"))  # end-exclusive
     step: int = int(os.getenv("STEP", "20000"))
 
     dry_run: bool = os.getenv("DRY_RUN", "0") == "1"
@@ -128,8 +128,8 @@ def main() -> int:
                 return 2
 
         for lo, to, hi in iter_ranges(cfg.start_height, cfg.end_height, cfg.step):
-            txi_part = f"tx_inputs_p{lo}_{hi}"
-            txo_part = f"tx_outputs_p{lo}_{hi}"
+            txi_part = f"tx_inputs_p{lo:06d}_{hi:06d}"
+            txo_part = f"tx_outputs_p{lo:06d}_{hi:06d}"
 
             # ---- Create partitions (if missing) ----
             if not table_exists(cur, cfg.schema, txi_part):
@@ -274,7 +274,7 @@ def main() -> int:
                         errors += 1
                         print(f"[ERROR] {idx_tv}: {e.__class__.__name__}: {e}")
 
-            print(f"[DONE] range [{lo},{to}) -> p{lo}_{hi}")
+            print(f"[DONE] range [{lo:06d},{to:06d}) -> p{lo:06d}_{hi:06d}")
             time.sleep(cfg.sleep_sec)
 
     conn.close()

@@ -5,7 +5,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 
-FRACTION = 920000
+FRACTION = 520000
 BLOCK_TABLE = "block_header"
 INPUTS_TABLE = f"tx_inputs_p{FRACTION}_{FRACTION+19999}"
 OUTPUTS_TABLE = f"tx_outputs_p{FRACTION}_{FRACTION+19999}"

@@ -15,10 +15,7 @@ PGUSER = "btcetl"
 PGPASSWORD = "strongpassword"
 
 BASE_FOLDER = "/data/index/btc/csv/"
-CHOSEN_FOLDER = ["from_380000", "from_360000","from_340000","from_320000","from_300000",
-                 "from_280000", "from_260000","from_240000","from_220000","from_200000",
-                 "from_180000", "from_160000","from_140000","from_120000","from_100000",
-                 "from_80000",  "from_60000", "from_40000","from_20000","from_0"]
+CHOSEN_FOLDER = ["from_500000", "from_480000","from_460000","from_440000"]
 OPERATION_PATHS = [os.path.join(BASE_FOLDER, r) for r in CHOSEN_FOLDER]
 
 # Partition size (you said 20,000 blocks per partition)
@@ -40,7 +37,6 @@ RELOAD_PARTITION_BEFORE_LOAD = False
 # =========================
 def run_psql(sql: str) -> None:
 
-
     cmd = [
         "psql",
         "-h", PGHOST,
@@ -60,18 +56,10 @@ def run_psql(sql: str) -> None:
     if r.returncode != 0:
         raise RuntimeError(r.stderr.strip() or "psql failed")
 
-def sql_quote_literal(s: str) -> str:
-    # safe SQL string literal quoting
-    return "'" + s.replace("'", "''") + "'"
-
 
 def psql_copy(table: str, csv_path: Path) -> None:
-    # Server-side COPY: postgres server reads the file.
-    path_lit = sql_quote_literal(str(csv_path))
-    sql = (
-        f"COPY {table} FROM {path_lit} "
-        f"WITH (FORMAT csv, HEADER true);"
-    )
+    # CSV must be readable by your Linux user (because \copy reads on client side).
+    sql = f"\\copy {table} FROM '{csv_path}' WITH (FORMAT csv, HEADER true)"
     run_psql(sql)
 
 
@@ -85,8 +73,8 @@ def partition_tables_for_height(h: int) -> str:
     p_start = (h // PART_STEP) * PART_STEP
     # p_start = h
     p_end = p_start + PART_STEP - 1
-    txo_table = f"public.tx_outputs_p{p_start:06d}_{p_end:06d}"
-    txi_table = f"public.tx_inputs_p{p_start:06d}_{p_end:06d}"
+    txo_table = f"public.tx_outputs_p{p_start}_{p_end}"
+    txi_table = f"public.tx_inputs_p{p_start}_{p_end}"
     return txo_table, txi_table, p_start, p_end
 
 
