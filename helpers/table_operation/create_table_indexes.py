@@ -35,7 +35,7 @@ class Config:
 
     start_height: int = int(os.getenv("START_HEIGHT", "880000"))
     end_height: int = int(os.getenv("END_HEIGHT", "920000"))  # end-exclusive
-    step: int = int(os.getenv("STEP", "20000"))
+    step: int = settings.TABLE_PARTITION_STEP
 
     dry_run: bool = os.getenv("DRY_RUN", "0") == "1"
     sleep_sec: float = float(os.getenv("SLEEP_SEC", "0.05"))

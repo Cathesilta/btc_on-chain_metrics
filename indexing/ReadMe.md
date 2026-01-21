@@ -62,7 +62,7 @@
 #### 1. Postgres Helpers
 - "helpers/table_operation/create_tables.py". Because I use partition tables, it will be good to have this script to batch-create sub tables.
 Use variables "start_height", "end_height" to assign a range. Use variable "step" to assign height partitioning. 
-- "helpers/table_operation/check_tables.py". This can check if the rows in sub tales matches to the rows in corresponding csv files. Use variables "FRACTION" and "STEP" to assign the chosen table.
+- "helpers/table_operation/check_tables.py". This can check if the rows in sub tales matches to the rows in corresponding csv files. Use variables "FRACTION" (corresponds to the table's start height) to assign the chosen table.
 - "helpers/table_operation/create_table_indexes.py". For those transaction sub tables haven't created indexes, this is a supplement.
 
 #### 2. CSV Helpers
