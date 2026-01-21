@@ -22,15 +22,16 @@ import psycopg2
 from psycopg2 import sql
 from psycopg2.errors import DuplicateObject, UndefinedTable
 
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from indexing.conf import settings
+
 
 @dataclass(frozen=True)
 class Config:
-    host: str = os.getenv("PGHOST", "127.0.0.1")
-    port: int = int(os.getenv("PGPORT", "5432"))
-    dbname: str = os.getenv("PGDATABASE", "btc_index")
-    user: str = os.getenv("PGUSER", "btcetl")
-    password: str = os.getenv("PGPASSWORD", "strongpassword")
-    schema: str = os.getenv("PGSCHEMA", "public")
+
+    schema: str = settings.PGSCHEMA
 
     start_height: int = int(os.getenv("START_HEIGHT", "880000"))
     end_height: int = int(os.getenv("END_HEIGHT", "920000"))  # end-exclusive
@@ -81,11 +82,11 @@ def main():
     cfg = Config()
 
     conn = psycopg2.connect(
-        host=cfg.host,
-        port=cfg.port,
-        dbname=cfg.dbname,
-        user=cfg.user,
-        password=cfg.password,
+        host=settings.PGHOST,
+        port=settings.PGPORT,
+        dbname=settings.PGDATABASE,
+        user=settings.PGUSER,
+        password=settings.PGPASSWORD,
     )
     # Required for CREATE INDEX CONCURRENTLY
     conn.autocommit = True

@@ -22,6 +22,7 @@ class Settings:
     PGDATABASE: str = os.environ.get("PGDATABASE", "btc_index")
     PGUSER: str = os.environ.get("PGUSER", "btcetl")
     PGPASSWORD: str = os.environ.get("PGPASSWORD", "strongpassword")
+    PGSCHEMA: str = os.environ.get("PGSCHEMA", "public")
 
     # Postgres table settings
     TABLE_PARTITION_STEP: int = int(os.environ.get("TABLE_PARTITION_STEP", "20000"))

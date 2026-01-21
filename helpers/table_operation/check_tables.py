@@ -4,11 +4,17 @@ import pandas as pd
 from pathlib import Path
 from tqdm import tqdm
 
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from indexing.conf import settings
 
-FRACTION = 520000
+
+FRACTION = 40000
+
 BLOCK_TABLE = "block_header"
-INPUTS_TABLE = f"tx_inputs_p{FRACTION}_{FRACTION+19999}"
-OUTPUTS_TABLE = f"tx_outputs_p{FRACTION}_{FRACTION+19999}"
+INPUTS_TABLE = f"tx_inputs_p{FRACTION:0{settings.HEIGHT_DIGITS}d}_{(FRACTION+settings.TABLE_PARTITION_STEP-1):06d}"
+OUTPUTS_TABLE = f"tx_outputs_p{FRACTION:0{settings.HEIGHT_DIGITS}d}_{(FRACTION+settings.TABLE_PARTITION_STEP-1):06d}"
 CSV_CHECKING_PATH = f"/data/index/btc/csv/from_{FRACTION}"
 
 block_row = 0

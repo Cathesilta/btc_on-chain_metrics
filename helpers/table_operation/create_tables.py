@@ -35,19 +35,19 @@ from typing import Iterable, Tuple
 
 import psycopg2
 
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from indexing.conf import settings
+
 
 @dataclass(frozen=True)
 class Config:
-    host: str = os.getenv("PGHOST", "127.0.0.1")
-    port: int = int(os.getenv("PGPORT", "5432"))
-    dbname: str = os.getenv("PGDATABASE", "btc_index")
-    user: str = os.getenv("PGUSER", "btcetl")
-    password: str = os.getenv("PGPASSWORD", "strongpassword")
-    schema: str = os.getenv("PGSCHEMA", "public")
+    schema: str = settings.PGSCHEMA
 
     start_height: int = int(os.getenv("START_HEIGHT", "0"))
     end_height: int = int(os.getenv("END_HEIGHT", "100000"))  # end-exclusive
-    step: int = int(os.getenv("STEP", "20000"))
+
 
     dry_run: bool = os.getenv("DRY_RUN", "0") == "1"
     sleep_sec: float = float(os.getenv("SLEEP_SEC", "0.02"))
@@ -106,11 +106,11 @@ def main() -> int:
     cfg = Config()
 
     conn = psycopg2.connect(
-        host=cfg.host,
-        port=cfg.port,
-        dbname=cfg.dbname,
-        user=cfg.user,
-        password=cfg.password,
+        host=settings.PGHOST,
+        port=settings.PGPORT,
+        dbname=settings.PGDATABASE,
+        user=settings.PGUSER,
+        password=settings.PGPASSWORD,
     )
     conn.autocommit = True
 
@@ -127,9 +127,9 @@ def main() -> int:
                 print(f"[FATAL] missing parent table: {qname(cfg.schema, parent)}", file=sys.stderr)
                 return 2
 
-        for lo, to, hi in iter_ranges(cfg.start_height, cfg.end_height, cfg.step):
-            txi_part = f"tx_inputs_p{lo:06d}_{hi:06d}"
-            txo_part = f"tx_outputs_p{lo:06d}_{hi:06d}"
+        for lo, to, hi in iter_ranges(cfg.start_height, cfg.end_height, settings.TABLE_PARTITION_STEP):
+            txi_part = f"tx_inputs_p{lo:0{settings.HEIGHT_DIGITS}d}_{hi:0{settings.HEIGHT_DIGITS}d}"
+            txo_part = f"tx_outputs_p{lo:0{settings.HEIGHT_DIGITS}d}_{hi:0{settings.HEIGHT_DIGITS}d}"
 
             # ---- Create partitions (if missing) ----
             if not table_exists(cur, cfg.schema, txi_part):
@@ -274,7 +274,7 @@ def main() -> int:
                         errors += 1
                         print(f"[ERROR] {idx_tv}: {e.__class__.__name__}: {e}")
 
-            print(f"[DONE] range [{lo:06d},{to:06d}) -> p{lo:06d}_{hi:06d}")
+            print(f"[DONE] range [{lo:0{settings.HEIGHT_DIGITS}d},{to:0{settings.HEIGHT_DIGITS}d}) -> p{lo:0{settings.HEIGHT_DIGITS}d}_{hi:0{settings.HEIGHT_DIGITS}d}")
             time.sleep(cfg.sleep_sec)
 
     conn.close()
