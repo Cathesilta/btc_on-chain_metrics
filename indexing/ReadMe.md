@@ -18,9 +18,18 @@
 
 
 ### Python Dependencies
+
 - Python3 version 3.12.3
-- numpy
-- psycopg2
+- numpy==2.4.0
+- pandas==2.3.3
+- psutil==7.2.1
+- psycopg2-binary==2.9.11
+- python-bitcoinrpc==1.0
+- python-dateutil==2.9.0.post0
+- pytz==2025.2
+- six==1.17.0
+- tqdm==4.67.1
+- tzdata==2025.3
 - tqdm
 
 
