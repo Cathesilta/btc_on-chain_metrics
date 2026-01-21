@@ -8,21 +8,16 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-PGHOST = "127.0.0.1"
-PGPORT = "5432"
-PGDATABASE = "btc_index"
-PGUSER = "btcetl"
-PGPASSWORD = "strongpassword"
+from conf import settings
 
-BASE_FOLDER = "/data/index/btc/csv/"
+
 CHOSEN_FOLDER = ["from_380000", "from_360000","from_340000","from_320000","from_300000",
                  "from_280000", "from_260000","from_240000","from_220000","from_200000",
                  "from_180000", "from_160000","from_140000","from_120000","from_100000",
                  "from_80000",  "from_60000", "from_40000","from_20000","from_0"]
-OPERATION_PATHS = [os.path.join(BASE_FOLDER, r) for r in CHOSEN_FOLDER]
 
-# Partition size (you said 20,000 blocks per partition)
-PART_STEP = 20000
+OPERATION_PATHS = [os.path.join(settings.CSV_DIR, r) for r in CHOSEN_FOLDER]
+
 
 # Tables
 BLOCK_TABLE = "public.block_header"
@@ -43,10 +38,10 @@ def run_psql(sql: str) -> None:
 
     cmd = [
         "psql",
-        "-h", PGHOST,
-        "-p", PGPORT,
-        "-U", PGUSER,
-        "-d", PGDATABASE,
+        "-h", settings.PGHOST,
+        "-p", settings.PGPORT,
+        "-U", settings.PGUSER,
+        "-d", settings.PGDATABASE,
         "-v", "ON_ERROR_STOP=1",
         "-q",
         "-c", sql,
@@ -55,7 +50,7 @@ def run_psql(sql: str) -> None:
         cmd,
         text=True,
         capture_output=True,
-        env={"PGPASSWORD": PGPASSWORD},
+        env={"PGPASSWORD": settings.PGPASSWORD},
     )
     if r.returncode != 0:
         raise RuntimeError(r.stderr.strip() or "psql failed")
@@ -82,11 +77,11 @@ def parse_range_dirname(name: str) -> tuple[int, int]:
 
 
 def partition_tables_for_height(h: int) -> str:
-    p_start = (h // PART_STEP) * PART_STEP
+    p_start = (h // settings.TABLE_PARTITION_STEP) * settings.TABLE_PARTITION_STEP
     # p_start = h
-    p_end = p_start + PART_STEP - 1
-    txo_table = f"public.tx_outputs_p{p_start:06d}_{p_end:06d}"
-    txi_table = f"public.tx_inputs_p{p_start:06d}_{p_end:06d}"
+    p_end = p_start + settings.TABLE_PARTITION_STEP - 1
+    txo_table = f"public.tx_outputs_p{p_start:0{settings.HEIGHT_DIGITS}d}_{p_end:0{settings.HEIGHT_DIGITS}d}"
+    txi_table = f"public.tx_inputs_p{p_start:0{settings.HEIGHT_DIGITS}d}_{p_end:0{settings.HEIGHT_DIGITS}d}"
     return txo_table, txi_table, p_start, p_end
 
 

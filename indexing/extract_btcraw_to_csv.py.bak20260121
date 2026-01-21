@@ -1,8 +1,7 @@
-# Third Version (3.0.1)
+# Third Version (3.0.0)
 # Use multi-processing, exploit multi core in CPU
 # Monitor the RAM usage
 # Use tqdm bar to monitor the process
-# 20260121, added an archive feature when saving .pg.csv files; added digit format folder name; added global conf.
 
 import os
 import sys
@@ -21,13 +20,17 @@ import threading
 import psutil
 from tqdm import tqdm
 
-from conf import settings
-
 import ast
 
 # ----------------------------
 # Configuration
 # ----------------------------
+
+# Bitcoin Core RPC
+RPC_USER = os.environ.get("BTC_RPC_USER", "feiy_btc")
+RPC_PASSWORD = os.environ.get("BTC_RPC_PASSWORD", "v&xI1r&qa@=xi=lcroyl")
+RPC_HOST = os.environ.get("BTC_RPC_HOST", "127.0.0.1")
+RPC_PORT = int(os.environ.get("BTC_RPC_PORT", "8332"))
 
 START_BLOCK = 0
 END_BLOCK = 100000
@@ -38,13 +41,16 @@ TRUNK = 1000
 # Or decrease TRUNK to use more cores
 USING_CORE = 2
 
+# Define where to save the CSV files
+DIR = '/data/index/btc/csv/'
+
 # ----------------------------
 # Helpers: connections
 # ----------------------------
 
 def get_rpc() -> AuthServiceProxy:
     """Return RPC client for Bitcoin Core."""
-    uri = f"http://{settings.RPC_USER}:{settings.RPC_PASSWORD}@{settings.RPC_HOST}:{settings.RPC_PORT}"
+    uri = f"http://{RPC_USER}:{RPC_PASSWORD}@{RPC_HOST}:{RPC_PORT}"
     return AuthServiceProxy(uri)
 
 
@@ -71,12 +77,6 @@ def deep_getsizeof(obj, seen=None):
         size += sum(deep_getsizeof(i, seen) for i in obj)
 
     return size
-
-
-
-def group_folder_name(height: int, step: int) -> str:
-    base = (height // step) * step
-    return f"from_{base:0{settings.HEIGHT_DIGITS}d}"
 
 
 
@@ -318,8 +318,7 @@ def main():
 
         chunk_start = i_block
         chunk_end = min(i_block + TRUNK - 1, end_block)
-        group_dir = os.path.join(settings.CSV_DIR, group_folder_name(chunk_start, settings.TABLE_PARTITION_STEP))
-        chunk_path = os.path.join(group_dir, f"{chunk_start:0{settings.HEIGHT_DIGITS}d}-{chunk_end:0{settings.HEIGHT_DIGITS}d}")
+        chunk_path = f"{DIR}/{chunk_start}-{chunk_end}"
 
         print(f"<{inspect.currentframe().f_code.co_name}> Currently processing from {chunk_start} to {chunk_end} blocks")
         tasks.append((chunk_start, chunk_end, chunk_path))
