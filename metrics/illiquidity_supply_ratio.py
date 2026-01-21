@@ -20,43 +20,50 @@ from typing import Optional, Tuple
 import psycopg2
 from psycopg2.extras import execute_values
 
+from tqdm import tqdm
+from contextlib import contextmanager
+
+import inspect
+
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parents[0]))
+from indexing.conf import settings
 
 # =========================
 # Global config
 # =========================
 
-DB_HOST = os.getenv("PGHOST", "127.0.0.1")
-DB_PORT = int(os.getenv("PGPORT", "5432"))
-DB_NAME = os.getenv("PGDATABASE", "btc_index")
-DB_USER = os.getenv("PGUSER", "btcetl")
-DB_PASSWORD = os.getenv("PGPASSWORD", "strongpassword")
+DB_HOST = settings.PGHOST
+DB_PORT = settings.PGPORT
+DB_NAME = settings.PGDATABASE
+DB_USER = settings.PGUSER
+DB_PASSWORD = settings.PGPASSWORD
 
-START_HEIGHT = 920000
-BATCH_BLOCKS = 2000  # tune for performance
+START_HEIGHT = 0
+BATCH_BLOCKS = 1000  # tune for performance
 UPSERT_PAGE_SIZE = 50000     # execute_values page size
 COMMIT_EVERY_BATCHES = 20     # commit less often (but risk bigger rollback on crash)
 SNAPSHOT_EVERY_N_BLOCKS = 2000000000  # store one snapshot every N blocks (and always at latest)
 
 # limit to first N blocks only (for experiment)
-DRY_BLOCK_WINDOW = 1000   # e.g. only process 2000 blocks then exit
+DRY_BLOCK_WINDOW = 200000   # e.g. only process 2000 blocks then exit
 
 # "Illiquid" if spent/received < threshold.
 # Commonly used heuristics are in the ~0.1-0.3 range; adjust for your needs.
 ILLIQUID_SPEND_RATIO_THRESHOLD = 0.25
 
 # If True, recreates working tables (drops prior run state)
-RESET_WORK_TABLES = True
+RESET_WORK_TABLES = False
 
 # Working schema/table names
-WORK_SCHEMA = "public"
+WORK_SCHEMA = settings.PGSCHEMA
 ADDR_STATE_TABLE = "addr_state_illiq"
 RESULT_TABLE = "illiquidity_supply_ratio"
 
-# rebuild switch
-RESET_WORK_TABLES = False
-
 
 # Optional: use UNLOGGED state table for speed (data is lost after crash/restart of Postgres)
+#####******************################   Danger  Zone  ##############******************##########
 USE_UNLOGGED_STATE_TABLE = True
 
 
@@ -213,6 +220,29 @@ def upsert_addr_delta(cur, upsert_sql: str, rows: list[tuple]):
     payload = [(addr, int(v), int(v)) for addr, v in rows]
     execute_values(cur, upsert_sql, payload, page_size=UPSERT_PAGE_SIZE)
 
+# def upsert_addr_delta(cur, upsert_sql: str, rows: list[tuple], desc: str = "upsert"):
+#     """
+#     rows: [(address, delta_sats), ...]
+#     """
+#     n = len(rows)
+#     if n == 0:
+#         return
+
+#     # build payload once (this can also be non-trivial time)
+#     with timed(f"{desc}: build payload ({n})"):
+#         payload = [(addr, int(v), int(v)) for addr, v in rows]
+
+#     page = UPSERT_PAGE_SIZE
+#     total_pages = (n + page - 1) // page
+
+#     with tqdm(total=total_pages, desc=desc, unit="page", leave=False) as pbar:
+#         # send in chunks so tqdm can update
+#         for i in range(0, n, page):
+#             chunk = payload[i:i + page]
+#             with timed(f"{desc}: execute_values chunk {i//page + 1}/{total_pages} (rows={len(chunk)})"):
+#                 execute_values(cur, upsert_sql, chunk, page_size=len(chunk))
+#             pbar.update(1)
+
 def compute_snapshot(cur) -> Tuple[int, int, float]:
     cur.execute(SQL_COMPUTE_SNAPSHOT, (ILLIQUID_SPEND_RATIO_THRESHOLD,))
     total, illiq, ratio = cur.fetchone()
@@ -226,6 +256,18 @@ def should_snapshot(height: int, latest: int) -> bool:
 
 
 # =========================
+# Monitor helpers
+# =========================
+
+@contextmanager
+def timed(step: str):
+    t0 = time.time()
+    yield
+    dt = time.time() - t0
+    tqdm.write(f"[{step}] {dt:.2f}s")
+
+
+# =========================
 # Main
 # =========================
 
@@ -236,27 +278,41 @@ def main():
         conn.autocommit = False
         with conn.cursor() as cur:
             ensure_tables(cur)
-
+            print(f"<{inspect.currentframe().f_code.co_name}> settings:")
+            print(f"<{inspect.currentframe().f_code.co_name}> BATCH_BLOCKS to {BATCH_BLOCKS}")
             # Get the lastest height from block_head
             latest = fetch_one_int(cur, SQL_GET_LATEST_HEIGHT)
             if DRY_BLOCK_WINDOW is not None:
                 latest = min(latest, START_HEIGHT + DRY_BLOCK_WINDOW - 1)
+                print(f"<{inspect.currentframe().f_code.co_name}> you set DRY_BLOCK_WINDOW to {DRY_BLOCK_WINDOW}")
 
             if latest < START_HEIGHT:
                 raise RuntimeError(f"latest={latest} < START_HEIGHT={START_HEIGHT}")
+            
+            print(f"<{inspect.currentframe().f_code.co_name}> latest is {latest}")
 
             # Resume from last snapshot, unless reset
             if RESET_WORK_TABLES:
                 h = START_HEIGHT
+                print(f"<{inspect.currentframe().f_code.co_name}> RESET_WORK_TABLES is {RESET_WORK_TABLES} .\
+                      Will start at START_HEIGHT {START_HEIGHT}")
             else:
                 last_done = fetch_one_int(cur, SQL_GET_LAST_DONE)
                 h = max(START_HEIGHT, last_done + 1)
-
-            print(f"range: {h}..{latest} (START_HEIGHT={START_HEIGHT}, BATCH_BLOCKS={BATCH_BLOCKS})")
+                
+                print(f"<{inspect.currentframe().f_code.co_name}> even if you set START_HEIGHT to {START_HEIGHT},\
+                      RESET_WORK_TABLES is {RESET_WORK_TABLES}. Will continue at {h}")
+                
+            print(f"<{inspect.currentframe().f_code.co_name}> \
+                  range: {h}..{latest} (START_HEIGHT={START_HEIGHT}, BATCH_BLOCKS={BATCH_BLOCKS})")
 
             batches_since_commit = 0
+
+            
             while h <= latest:
                 h2 = min(h + BATCH_BLOCKS - 1, latest)
+
+                print(f"<{inspect.currentframe().f_code.co_name}> processing from height {h} to height {h2}")
 
                 # 1) received deltas in [h, h2]
                 cur.execute(SQL_BATCH_RECEIVED, (h, h2))
@@ -264,7 +320,10 @@ def main():
                 upsert_addr_delta(cur, SQL_UPSERT_RECEIVED, recv_rows)
 
                 # 2) spent deltas in [h, h2]
+                start_time = time.time()
                 cur.execute(SQL_BATCH_SPENT, (h, h2))
+                print(f"<{inspect.currentframe().f_code.co_name}> It took {time.time()-start_time}s to process cur.execute(SQL_BATCH_SPENT, (h, h2))")
+
                 spent_rows = cur.fetchall()
                 upsert_addr_delta(cur, SQL_UPSERT_SPENT, spent_rows)
 
@@ -281,10 +340,12 @@ def main():
                         "illiquid_spend_ratio_threshold": ILLIQUID_SPEND_RATIO_THRESHOLD,
                         "definition": "address-level approx: illiquid if spent/received < threshold; supply=positive balances since start_height",
                     }
+
                     cur.execute(
                         SQL_UPSERT_RESULT,
                         (h2, blk_time, total, illiq, ratio, json.dumps(params)),
                     )
+                    
                     print(
                         f"snapshot height={h2} ratio={ratio:.6f} total={total} illiq={illiq} "
                         f"(recv_addrs={len(recv_rows)} spent_addrs={len(spent_rows)})"
