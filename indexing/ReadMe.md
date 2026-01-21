@@ -48,6 +48,17 @@
 - Manually[^Mannually] assign "CHOSEN_FOLDER", in each folder, the script will find all sub-folders and execute COPY with those .pg.csv in each.
 - "Part_STEP" should be correspond to how you "partition"[^partition] the transaction tables.
 
+### Helpers
+
+#### 1. Postgres Helpers
+- "helpers/table_operation/create_tables.py". Because I use partition tables, it will be good to have this script to batch-create sub tables.
+Use variables "start_height", "end_height" to assign a range. Use variable "step" to assign height partitioning. 
+- "helpers/table_operation/check_tables.py". This can check if the rows in sub tales matches to the rows in corresponding csv files. Use variables "FRACTION" and "STEP" to assign the chosen table.
+- "helpers/table_operation/create_table_indexes.py". For those transaction sub tables haven't created indexes, this is a supplement.
+
+#### 2. CSV Helpers
+- "helpers/csv_check.py". Check csv here.
+
 
 [^partition]: A single transaction table will be too huge (2 TB) for random writing. Partition the table into ones within 50 GB would be better.
 [^Mannually]: I use this fashion becaues this process will be slow in a cunsumer-level computer, it sometimes needs to restart the device to regain efficiency. Many consumer-grade NVMe drives use a portion of their flash memory as a "pseudo-SLC cache" to accelerate write speeds. During continuous large writes, once the cache is exhausted, the drive reverts to the actual TLC/QLC speed, and the throughput drops significantly (sometimes from 2–6 GB/s to a few hundred MB/s). After a period of inactivity, the controller's background process "organizes/moves" the cached data to the TLC/QLC memory, the cache is restored, and therefore the speed increases again. 
