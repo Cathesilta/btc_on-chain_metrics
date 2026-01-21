@@ -1,6 +1,6 @@
 # Abstract
 
-This repo includes workflow from indexing BTC data and doing metrics based on 
+This repo includes workflow from indexing Bitcoin data to metrics 
 
 
 ## Env
@@ -17,6 +17,12 @@ This repo includes workflow from indexing BTC data and doing metrics based on
 - PostgreSQL: psql (PostgreSQL) 16.11 (Ubuntu 16.11-0ubuntu0.24.04.1)
 - bitcoin-cli: Bitcoin Core RPC client version v30.0.0
 
+### Dependencies
+
+```
+pip install -r requirements.txt
+```
+
 ## Indexing
 
 - Retrieve data from Bitcoin raw blocks and make them easier to query.
@@ -24,11 +30,11 @@ This repo includes workflow from indexing BTC data and doing metrics based on
 
 ## Metrics
 
-- Do the Metrics from indexed data.
+- Do the Metrics from indexed data. 
 - Look at metrics folder.
 
 
 
 ## Helpers
 
-- Postgres is heavily used. Helpers includes table operations.
+- Postgres is heavily used. Helpers includes table operations.  
