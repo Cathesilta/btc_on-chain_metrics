@@ -27,7 +27,7 @@ import inspect
 
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+sys.path.append(str(Path(__file__).resolve().parents[0]))
 from indexing.conf import settings
 
 # =========================
@@ -41,9 +41,9 @@ DB_USER = settings.PGUSER
 DB_PASSWORD = settings.PGPASSWORD
 
 START_HEIGHT = 0
-BATCH_BLOCKS = 500  # tune for performance
+BATCH_BLOCKS = 1000  # tune for performance
 UPSERT_PAGE_SIZE = 50000     # execute_values page size
-COMMIT_EVERY_BATCHES = 100     # commit less often (but risk bigger rollback on crash)
+COMMIT_EVERY_BATCHES = 20     # commit less often (but risk bigger rollback on crash)
 SNAPSHOT_EVERY_N_BLOCKS = 10000  # store one snapshot every N blocks (and always at latest)
 
 # limit to first N blocks only (for experiment)
@@ -121,15 +121,6 @@ WHERE i.spent_height BETWEEN %s AND %s
   AND o.address IS NOT NULL AND o.address <> ''
 GROUP BY o.address;
 """
-# ######## Added to optimize SQL_BATCH_SPENT
-# session-local tuning (applies only inside current transaction)
-SQL_SET_LOCAL_TUNING = """
-SET LOCAL work_mem = '512MB';
-"""
-# If your Postgres supports it (PG 13+ typically has hash_mem_multiplier),
-# you can add it; if it errors, remove this line.
-SQL_SET_LOCAL_HASH_MEM = "SET LOCAL hash_mem_multiplier = 2;"
-# ######### Added to optimize SQL_BATCH_SPENT
 
 SQL_UPSERT_RECEIVED = f"""
 INSERT INTO {WORK_SCHEMA}.{ADDR_STATE_TABLE} (address, received_sats, balance_sats)
@@ -147,8 +138,6 @@ SET spent_sats   = {WORK_SCHEMA}.{ADDR_STATE_TABLE}.spent_sats   + EXCLUDED.spen
     balance_sats = {WORK_SCHEMA}.{ADDR_STATE_TABLE}.balance_sats - EXCLUDED.spent_sats;
 """
 
-
-# NULLIF(received_sats, 0) means return received_sats or 0, it's a redundancy because "WHEN received_sats > 0", ignore this.
 SQL_COMPUTE_SNAPSHOT = f"""
 WITH s AS (
   SELECT
@@ -260,11 +249,8 @@ def compute_snapshot(cur) -> Tuple[int, int, float]:
     return int(total), int(illiq), float(ratio)
 
 def should_snapshot(height: int, latest: int) -> bool:
-    print("checking should_snapshot")
     if height >= latest:
         return True
-    print(f"height {height} % SNAPSHOT_EVERY_N_BLOCKS {SNAPSHOT_EVERY_N_BLOCKS} == {height % SNAPSHOT_EVERY_N_BLOCKS}")
-    
     # snapshot every N blocks by height boundary
     return (height % SNAPSHOT_EVERY_N_BLOCKS) == 0
 
@@ -292,8 +278,6 @@ def main():
         conn.autocommit = False
         with conn.cursor() as cur:
             ensure_tables(cur)
-            cur.execute(SQL_SET_LOCAL_TUNING)
-            cur.execute(SQL_SET_LOCAL_HASH_MEM)
             print(f"<{inspect.currentframe().f_code.co_name}> settings:")
             print(f"<{inspect.currentframe().f_code.co_name}> BATCH_BLOCKS to {BATCH_BLOCKS}")
             # Get the lastest height from block_head
@@ -328,9 +312,9 @@ def main():
             pbar = tqdm(total=total_blocks, desc="Processing blocks", unit="block")
             while h <= latest:
                 h2 = min(h + BATCH_BLOCKS - 1, latest)
-                batch_n = h2 - h + 1
 
                 # print(f"<{inspect.currentframe().f_code.co_name}> processing from height {h} to height {h2}")
+
                 # 1) received deltas in [h, h2]
                 cur.execute(SQL_BATCH_RECEIVED, (h, h2))
                 recv_rows = cur.fetchall()  # [(address, recv), ...]
@@ -338,18 +322,18 @@ def main():
 
                 # 2) spent deltas in [h, h2]
                 start_time = time.time()
-                with timed(f"{h}-{h2} SQL_BATCH_SPENT execute"):
-                    cur.execute(SQL_BATCH_SPENT, (h, h2))
+                cur.execute(SQL_BATCH_SPENT, (h, h2))
+                print(f"<{inspect.currentframe().f_code.co_name}> It took {time.time()-start_time}s to process cur.execute(SQL_BATCH_SPENT, (h, h2))")
+
                 spent_rows = cur.fetchall()
                 upsert_addr_delta(cur, SQL_UPSERT_SPENT, spent_rows)
 
                 batches_since_commit += 1
 
                 # snapshot on boundary (or latest)
-                if should_snapshot(h2+1, latest):
+                if should_snapshot(h2, latest):
                     blk_time = fetch_block_time(cur, h2)
-                    with timed(f"{h}-{h2} compute_snapshot"):
-                        total, illiq, ratio = compute_snapshot(cur)
+                    total, illiq, ratio = compute_snapshot(cur)
                     params = {
                         "start_height": START_HEIGHT,
                         "batch_blocks": BATCH_BLOCKS,
@@ -357,7 +341,6 @@ def main():
                         "illiquid_spend_ratio_threshold": ILLIQUID_SPEND_RATIO_THRESHOLD,
                         "definition": "address-level approx: illiquid if spent/received < threshold; supply=positive balances since start_height",
                     }
-                    print(f"<{inspect.currentframe().f_code.co_name}> snapshot compute finished")
 
                     cur.execute(
                         SQL_UPSERT_RESULT,
@@ -375,7 +358,7 @@ def main():
                     batches_since_commit = 0
 
                 h = h2 + 1
-                pbar.update(batch_n)
+                pbar.update(h2 - h + 1)
 
             pbar.close()
 
