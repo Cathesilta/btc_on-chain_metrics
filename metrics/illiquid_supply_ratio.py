@@ -40,21 +40,21 @@ DB_NAME = settings.PGDATABASE
 DB_USER = settings.PGUSER
 DB_PASSWORD = settings.PGPASSWORD
 
-START_HEIGHT = 0
-BATCH_BLOCKS = 500  # tune for performance
+START_HEIGHT = 400000
+BATCH_BLOCKS = 5000  # tune for performance
 UPSERT_PAGE_SIZE = 50000     # execute_values page size
-COMMIT_EVERY_BATCHES = 100     # commit less often (but risk bigger rollback on crash)
-SNAPSHOT_EVERY_N_BLOCKS = 10000  # store one snapshot every N blocks (and always at latest)
+COMMIT_EVERY_BATCHES = 20     # commit less often (but risk bigger rollback on crash)
+SNAPSHOT_EVERY_N_BLOCKS = 5000  # store one snapshot every N blocks (and always at latest)
 
 # limit to first N blocks only (for experiment)
-DRY_BLOCK_WINDOW = 400000   # e.g. only process 2000 blocks then exit
+DRY_BLOCK_WINDOW = 100000   # e.g. only process 2000 blocks then exit
 
 # "Illiquid" if spent/received < threshold.
 # Commonly used heuristics are in the ~0.1-0.3 range; adjust for your needs.
 ILLIQUID_SPEND_RATIO_THRESHOLD = 0.25
 
 # If True, recreates working tables (drops prior run state)
-RESET_WORK_TABLES = True
+RESET_WORK_TABLES = False
 
 # Working schema/table names
 WORK_SCHEMA = settings.PGSCHEMA
@@ -323,6 +323,7 @@ def main():
                   range: {h}..{latest} (START_HEIGHT={START_HEIGHT}, BATCH_BLOCKS={BATCH_BLOCKS})")
 
             batches_since_commit = 0
+            SQL_BATCH_SPENT_time_spent = 0
 
             total_blocks = latest - h + 1
             pbar = tqdm(total=total_blocks, desc="Processing blocks", unit="block")
@@ -340,6 +341,7 @@ def main():
                 start_time = time.time()
                 with timed(f"{h}-{h2} SQL_BATCH_SPENT execute"):
                     cur.execute(SQL_BATCH_SPENT, (h, h2))
+                SQL_BATCH_SPENT_time_spent += time.time() - start_time
                 spent_rows = cur.fetchall()
                 upsert_addr_delta(cur, SQL_UPSERT_SPENT, spent_rows)
 
@@ -381,6 +383,8 @@ def main():
 
             # final commit
             conn.commit()
+
+            print(f"With BATCH_BLOCKS == {BATCH_BLOCKS} SQL_BATCH_SPENT_time_spent spent {SQL_BATCH_SPENT_time_spent}s")
 
     print(f"done in {time.time() - t0:.1f}s; results: {WORK_SCHEMA}.{RESULT_TABLE}")
 
