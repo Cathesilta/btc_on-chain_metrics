@@ -30,8 +30,8 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 print(str(Path(__file__).resolve().parents[2]))
 from indexing.conf import settings
 
-H1 = 0          # start height (inclusive)
-H2 = 400000          # end height (inclusive)
+H1 = 500000          # start height (inclusive)
+H2 = 530000          # end height (inclusive)
 N_DAYS = 30           # bucket size (N days)
 
 ANCHOR = "first_day" # "first_day" | "utc_epoch"

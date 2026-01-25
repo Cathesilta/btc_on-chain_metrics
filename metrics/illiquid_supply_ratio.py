@@ -40,14 +40,14 @@ DB_NAME = settings.PGDATABASE
 DB_USER = settings.PGUSER
 DB_PASSWORD = settings.PGPASSWORD
 
-START_HEIGHT = 400000
-BATCH_BLOCKS = 5000  # tune for performance
+START_HEIGHT = 530000
+BATCH_BLOCKS = 10000  # tune for performance
 UPSERT_PAGE_SIZE = 50000     # execute_values page size
-COMMIT_EVERY_BATCHES = 20     # commit less often (but risk bigger rollback on crash)
-SNAPSHOT_EVERY_N_BLOCKS = 5000  # store one snapshot every N blocks (and always at latest)
+COMMIT_EVERY_BATCHES = 1     # commit less often (but risk bigger rollback on crash)
+SNAPSHOT_EVERY_N_BLOCKS = 10000  # store one snapshot every N blocks (and always at latest)
 
 # limit to first N blocks only (for experiment)
-DRY_BLOCK_WINDOW = 100000   # e.g. only process 2000 blocks then exit
+DRY_BLOCK_WINDOW = 70000   # e.g. only process 2000 blocks then exit
 
 # "Illiquid" if spent/received < threshold.
 # Commonly used heuristics are in the ~0.1-0.3 range; adjust for your needs.
@@ -129,6 +129,8 @@ SET LOCAL work_mem = '512MB';
 # If your Postgres supports it (PG 13+ typically has hash_mem_multiplier),
 # you can add it; if it errors, remove this line.
 SQL_SET_LOCAL_HASH_MEM = "SET LOCAL hash_mem_multiplier = 2;"
+
+SQL_SET_LOCAL_NO_NESTLOOP = "SET LOCAL enable_nestloop = off;"
 # ######### Added to optimize SQL_BATCH_SPENT
 
 SQL_UPSERT_RECEIVED = f"""
@@ -282,6 +284,27 @@ def timed(step: str):
 
 
 # =========================
+# Time Helpers
+# =========================
+
+def fmt_duration_pad(seconds: int) -> str:
+    seconds = int(seconds)
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:02d} hours {m:02d} mins {s:02d} seconds"
+
+
+@contextmanager
+def timed(label: str):
+    t0 = time.time()
+    try:
+        yield
+    finally:
+        dt = time.time() - t0
+        print(f"[{label}] took {fmt_duration_pad(dt)}")
+
+# =========================
 # Main
 # =========================
 
@@ -294,6 +317,7 @@ def main():
             ensure_tables(cur)
             cur.execute(SQL_SET_LOCAL_TUNING)
             cur.execute(SQL_SET_LOCAL_HASH_MEM)
+            cur.execute(SQL_SET_LOCAL_NO_NESTLOOP)
             print(f"<{inspect.currentframe().f_code.co_name}> settings:")
             print(f"<{inspect.currentframe().f_code.co_name}> BATCH_BLOCKS to {BATCH_BLOCKS}")
             # Get the lastest height from block_head
@@ -384,7 +408,9 @@ def main():
             # final commit
             conn.commit()
 
-            print(f"With BATCH_BLOCKS == {BATCH_BLOCKS} SQL_BATCH_SPENT_time_spent spent {SQL_BATCH_SPENT_time_spent}s")
+            formated_SQL_batch_spent_time_spent = fmt_duration_pad(SQL_BATCH_SPENT_time_spent)
+
+            print(f"With BATCH_BLOCKS == {BATCH_BLOCKS} SQL_BATCH_SPENT_time_spent spent {formated_SQL_batch_spent_time_spent}s")
 
     print(f"done in {time.time() - t0:.1f}s; results: {WORK_SCHEMA}.{RESULT_TABLE}")
 
